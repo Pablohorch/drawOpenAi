@@ -1,9 +1,7 @@
 html,body{margin:0;height:100%;overflow:hidden;font-family:sans-serif;}
 #board{background:#fff;display:block;margin:auto;touch-action:none;}
-#toolbar{position:fixed;bottom:0;left:0;right:0;height:60px;background:rgba(255,255,255,.9);box-shadow:0 0 8px rgba(0,0,0,.2);display:flex;justify-content:center;align-items:center;gap:10px;}
-#toolbar button{background:none;border:none;width:40px;height:40px;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer;}
-#toolbar img{width:24px;height:24px;pointer-events:none;}
+#toolbar{position:fixed;bottom:20px;right:20px;background:rgba(255,255,255,.9);box-shadow:0 0 8px rgba(0,0,0,.2);display:flex;gap:10px;border-radius:30px;padding:8px;}
+#toolbar button{background:none;border:none;width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:24px;}
 #actions{position:fixed;top:10px;right:10px;background:rgba(255,255,255,.9);box-shadow:0 0 8px rgba(0,0,0,.2);display:flex;gap:6px;padding:5px;border-radius:4px;}
 #actions button{background:none;border:none;width:40px;height:40px;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer;}
 #actions img{width:24px;height:24px;pointer-events:none;}
-@media(max-width:600px){#toolbar{max-width:none;width:100%;}#toolbar button{flex:1;}}
