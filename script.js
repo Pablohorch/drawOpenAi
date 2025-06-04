@@ -15,6 +15,8 @@ let space = false;
 let saveTimer;
 let undoStack = [];
 let redoStack = [];
+let editingText = null;
+let textarea = null;
 function pushUndo() {
     undoStack.push(JSON.parse(JSON.stringify(state.objects)));
     if (undoStack.length > 50)
@@ -70,20 +72,61 @@ window.addEventListener('keyup', e => { if (e.code === 'Space')
     space = false; });
 window.addEventListener('pagehide', save);
 canvas.addEventListener('dblclick', e => {
-    var _a;
     const p = toWorld(e.clientX, e.clientY);
     if (state.selected && state.selected.type === 'text' && hitTestObject(state.selected, p)) {
-        const t = (_a = prompt('Editar texto:', state.selected.text)) !== null && _a !== void 0 ? _a : state.selected.text;
-        state.selected.text = t;
-        scheduleSave();
-        draw();
+        startTextEdit(state.selected);
     }
 });
 function toWorld(x, y) {
     return { x: (x - state.pan.x) / state.scale, y: (y - state.pan.y) / state.scale };
 }
+function toScreen(x, y) {
+    return { x: x * state.scale + state.pan.x, y: y * state.scale + state.pan.y };
+}
+function startTextEdit(obj) {
+    finishTextEdit();
+    editingText = obj;
+    textarea = document.createElement('textarea');
+    textarea.className = 'text-edit';
+    textarea.value = obj.text;
+    textarea.style.position = 'fixed';
+    document.body.appendChild(textarea);
+    updateTextAreaPos();
+    textarea.focus();
+    textarea.addEventListener('blur', finishTextEdit);
+    textarea.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            textarea.blur();
+        }
+    });
+}
+function finishTextEdit() {
+    if (!textarea || !editingText)
+        return;
+    editingText.text = textarea.value;
+    document.body.removeChild(textarea);
+    textarea = null;
+    editingText = null;
+    scheduleSave();
+    draw();
+}
+function updateTextAreaPos() {
+    if (!textarea || !editingText)
+        return;
+    const p = toScreen(editingText.x, editingText.y);
+    textarea.style.left = `${p.x}px`;
+    textarea.style.top = `${p.y}px`;
+    const w = Math.abs(editingText.w * state.scale);
+    const h = Math.abs(editingText.h * state.scale);
+    textarea.style.width = `${w}px`;
+    textarea.style.height = `${h}px`;
+    textarea.style.fontSize = `${h}px`;
+    textarea.style.lineHeight = `${h}px`;
+}
 canvas.addEventListener('pointerdown', e => {
     canvas.setPointerCapture(e.pointerId);
+    finishTextEdit();
     if (e.button === 2 || space) {
         state.isPanning = true;
         state.startPan = { x: e.clientX, y: e.clientY };
@@ -175,7 +218,6 @@ canvas.addEventListener('pointermove', e => {
     draw();
 });
 canvas.addEventListener('pointerup', () => {
-    var _a;
     if (state.isPanning) {
         state.isPanning = false;
         return;
@@ -195,18 +237,12 @@ canvas.addEventListener('pointerup', () => {
     if (state.current) {
         pushUndo();
         const obj = state.current;
-        if (obj.type === 'text') {
-            const t = (_a = prompt('Texto:', obj.text)) !== null && _a !== void 0 ? _a : '';
-            obj.text = t;
-            if (!t.trim()) {
-                state.current = null;
-                draw();
-                return;
-            }
-        }
-        state.objects.push(obj);
         state.current = null;
+        state.objects.push(obj);
         state.selected = obj;
+        if (obj.type === 'text') {
+            startTextEdit(obj);
+        }
         scheduleSave();
         draw();
     }
@@ -232,6 +268,7 @@ function draw() {
         drawObj(state.current);
     if (state.selected)
         drawHandles(state.selected);
+    updateTextAreaPos();
 }
 function drawObj(o) {
     ctx.strokeStyle = '#000';
@@ -252,7 +289,12 @@ function drawObj(o) {
         ctx.stroke();
     }
     else if (o.type === 'text') {
-        ctx.strokeRect(o.x, o.y, o.w, o.h);
+        if (state.selected === o || editingText === o) {
+            ctx.strokeRect(o.x, o.y, o.w, o.h);
+        }
+        if (editingText === o)
+            return;
+        ctx.font = `${Math.abs(o.h)}px sans-serif`;
         ctx.textAlign = o.align;
         const x = o.align === 'center' ? o.x + o.w / 2 : o.align === 'right' ? o.x + o.w : o.x;
         ctx.textBaseline = 'top';
