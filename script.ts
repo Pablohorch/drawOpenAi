@@ -6,11 +6,12 @@ interface LineObj { type: 'line'; x1: number; y1: number; x2: number; y2: number
 type DrawObject = PathObj | RectObj | LineObj;
 
 interface State {
-  tool: 'draw' | 'rect' | 'line';
+  tool: 'draw' | 'rect' | 'line' | 'select';
   objects: DrawObject[];
   current: DrawObject | null;
   selected: DrawObject | null;
   handle?: string;
+  moveStart?: Point;
   pan: Point;
   startPan?: Point;
   scale: number;
@@ -25,6 +26,7 @@ let state: State = {
   objects: [],
   current: null,
   selected: null,
+  moveStart: undefined,
   pan: { x: 0, y: 0 },
   scale: 1,
   isPanning: false,
@@ -67,12 +69,14 @@ function setTool(t: State['tool']): void {
   state.tool = t;
   state.current = null;
   state.selected = null;
-  canvas.style.cursor = 'crosshair';
+  state.moveStart = undefined;
+  canvas.style.cursor = t === 'select' ? 'default' : 'crosshair';
 }
 
 document.getElementById('tool-draw')!.onclick = () => setTool('draw');
 document.getElementById('tool-rect')!.onclick = () => setTool('rect');
 document.getElementById('tool-line')!.onclick = () => setTool('line');
+document.getElementById('tool-select')!.onclick = () => setTool('select');
 document.getElementById('clear')!.onclick = clearBoard;
 document.getElementById('undo')!.onclick = undo;
 document.getElementById('redo')!.onclick = redo;
@@ -104,6 +108,25 @@ canvas.addEventListener('pointerdown', e => {
       pushUndo();
       return;
     }
+    if (state.tool === 'select' && hitTestObject(state.selected, p)) {
+      state.moveStart = p;
+      pushUndo();
+      return;
+    }
+  }
+  if (state.tool === 'select') {
+    state.selected = null;
+    for (let i = state.objects.length - 1; i >= 0; i--) {
+      if (hitTestObject(state.objects[i], p)) {
+        state.selected = state.objects[i];
+        state.moveStart = p;
+        pushUndo();
+        draw();
+        return;
+      }
+    }
+    draw();
+    return;
   }
   state.selected = null;
   if (state.tool === 'draw') state.current = { type: 'path', points: [p] };
@@ -124,6 +147,15 @@ canvas.addEventListener('pointermove', e => {
   if (state.handle && state.selected) {
     if (state.selected.type === 'rect') updateRectFromHandle(state.selected, state.handle, p);
     else if (state.selected.type === 'line') updateLineFromHandle(state.selected, state.handle, p);
+    else if (state.selected.type === 'path') updatePathFromHandle(state.selected, state.handle, p);
+    draw();
+    return;
+  }
+  if (state.moveStart && state.selected) {
+    const dx = p.x - state.moveStart.x;
+    const dy = p.y - state.moveStart.y;
+    moveObject(state.selected, dx, dy);
+    state.moveStart = p;
     draw();
     return;
   }
@@ -138,6 +170,12 @@ canvas.addEventListener('pointerup', () => {
   if (state.isPanning) { state.isPanning = false; return; }
   if (state.handle) {
     state.handle = undefined;
+    scheduleSave();
+    draw();
+    return;
+  }
+  if (state.moveStart) {
+    state.moveStart = undefined;
     scheduleSave();
     draw();
     return;
@@ -217,6 +255,13 @@ function drawHandles(o: DrawObject): void {
       ctx.fill();
     });
   }
+  else if (o.type === 'path') {
+    o.points.forEach((pt, i) => {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
 }
 
 function hitTestHandle(o: DrawObject, p: Point): string | null {
@@ -240,8 +285,53 @@ function hitTestHandle(o: DrawObject, p: Point): string | null {
       const dx = p.x - h.x, dy = p.y - h.y;
       if (dx * dx + dy * dy <= r * r) return key;
     }
+  } else if (o.type === 'path') {
+    for (let i = 0; i < o.points.length; i++) {
+      const pt = o.points[i];
+      const dx = p.x - pt.x, dy = p.y - pt.y;
+      if (dx * dx + dy * dy <= r * r) return `p${i}`;
+    }
   }
   return null;
+}
+
+function hitTestObject(o: DrawObject, p: Point): boolean {
+  const tol = 6 / state.scale;
+  if (o.type === 'rect') {
+    return p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
+  } else if (o.type === 'line') {
+    return pointToSegment(p, { x: o.x1, y: o.y1 }, { x: o.x2, y: o.y2 }) <= tol;
+  } else {
+    for (let i = 0; i < o.points.length - 1; i++) {
+      const a = o.points[i], b = o.points[i + 1];
+      if (pointToSegment(p, a, b) <= tol) return true;
+    }
+  }
+  return false;
+}
+
+function pointToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
+  const px = a.x + t * dx, py = a.y + t * dy;
+  return Math.hypot(p.x - px, p.y - py);
+}
+
+function moveObject(o: DrawObject, dx: number, dy: number): void {
+  if (o.type === 'rect') {
+    o.x += dx; o.y += dy;
+  } else if (o.type === 'line') {
+    o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy;
+  } else {
+    o.points.forEach(pt => { pt.x += dx; pt.y += dy; });
+  }
+}
+
+function updatePathFromHandle(o: PathObj, handle: string, p: Point): void {
+  const idx = parseInt(handle.slice(1), 10);
+  if (!isNaN(idx) && o.points[idx]) {
+    o.points[idx] = p;
+  }
 }
 
 function updateRectFromHandle(o: RectObj, handle: string, p: Point): void {
