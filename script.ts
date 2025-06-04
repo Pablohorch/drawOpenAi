@@ -3,10 +3,20 @@ interface Point { x: number; y: number; }
 interface PathObj { type: 'path'; points: Point[]; }
 interface RectObj { type: 'rect'; x: number; y: number; w: number; h: number; }
 interface LineObj { type: 'line'; x1: number; y1: number; x2: number; y2: number; }
-type DrawObject = PathObj | RectObj | LineObj;
+interface TextObj {
+  type: 'text';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  align: CanvasTextAlign;
+  color: string;
+}
+type DrawObject = PathObj | RectObj | LineObj | TextObj;
 
 interface State {
-  tool: 'draw' | 'rect' | 'line' | 'select';
+  tool: 'draw' | 'rect' | 'line' | 'text' | 'select';
   objects: DrawObject[];
   current: DrawObject | null;
   selected: DrawObject | null;
@@ -37,6 +47,24 @@ let saveTimer: number;
 let undoStack: DrawObject[][] = [];
 let redoStack: DrawObject[][] = [];
 
+let editingText: TextObj | null = null;
+let textarea: HTMLTextAreaElement | null = null;
+const colorMenu = document.getElementById('text-colors') as HTMLDivElement;
+const colorButtons = Array.from(colorMenu.querySelectorAll<HTMLButtonElement>('button'));
+let currentTextColor = '#000000';
+colorButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentTextColor = btn.dataset.color || '#000000';
+    colorButtons.forEach(b => b.classList.toggle('active', b === btn));
+    if (editingText) {
+      editingText.color = currentTextColor;
+      if (textarea) textarea.style.color = currentTextColor;
+      draw();
+      scheduleSave();
+    }
+  });
+});
+
 function pushUndo(): void {
   undoStack.push(JSON.parse(JSON.stringify(state.objects)));
   if (undoStack.length > 50) undoStack.shift();
@@ -52,7 +80,12 @@ function resize(): void {
 function load(): void {
   const data = localStorage.getItem('draw-data');
   if (data) {
-    state.objects = JSON.parse(data) as DrawObject[];
+    state.objects = (JSON.parse(data) as DrawObject[]).map(o => {
+      if (o.type === 'text' && !(o as TextObj).color) {
+        (o as TextObj).color = '#000000';
+      }
+      return o;
+    });
   }
 }
 
@@ -71,11 +104,13 @@ function setTool(t: State['tool']): void {
   state.selected = null;
   state.moveStart = undefined;
   canvas.style.cursor = t === 'select' ? 'default' : 'crosshair';
+  colorMenu.classList.toggle('show', t === 'text');
 }
 
 document.getElementById('tool-draw')!.onclick = () => setTool('draw');
 document.getElementById('tool-rect')!.onclick = () => setTool('rect');
 document.getElementById('tool-line')!.onclick = () => setTool('line');
+document.getElementById('tool-text')!.onclick = () => setTool('text');
 document.getElementById('tool-select')!.onclick = () => setTool('select');
 document.getElementById('clear')!.onclick = clearBoard;
 document.getElementById('undo')!.onclick = undo;
@@ -88,13 +123,71 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { if (e.code === 'Space') space = false; });
 window.addEventListener('pagehide', save);
+canvas.addEventListener('dblclick', e => {
+  const p = toWorld(e.clientX, e.clientY);
+  if (state.selected && state.selected.type === 'text' && hitTestObject(state.selected, p)) {
+    startTextEdit(state.selected);
+  }
+});
 
 function toWorld(x: number, y: number): Point {
   return { x: (x - state.pan.x) / state.scale, y: (y - state.pan.y) / state.scale };
 }
 
+function toScreen(x: number, y: number): Point {
+  return { x: x * state.scale + state.pan.x, y: y * state.scale + state.pan.y };
+}
+
+function startTextEdit(obj: TextObj): void {
+  finishTextEdit();
+  editingText = obj;
+  textarea = document.createElement('textarea');
+  textarea.className = 'text-edit';
+  textarea.value = obj.text;
+  textarea.style.position = 'fixed';
+  textarea.style.color = obj.color;
+  document.body.appendChild(textarea);
+  currentTextColor = obj.color;
+  colorButtons.forEach(b => b.classList.toggle('active', b.dataset.color === obj.color));
+  colorMenu.classList.add('show');
+  updateTextAreaPos();
+  textarea.focus();
+  textarea.addEventListener('blur', finishTextEdit);
+  textarea.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); textarea!.blur(); }
+  });
+}
+
+function finishTextEdit(): void {
+  if (!textarea || !editingText) return;
+  editingText.text = textarea.value;
+  document.body.removeChild(textarea);
+  textarea = null;
+  editingText = null;
+  if (state.tool !== 'text') colorMenu.classList.remove('show');
+  scheduleSave();
+  draw();
+}
+
+function updateTextAreaPos(): void {
+  if (!textarea || !editingText) return;
+  const left = Math.min(editingText.x, editingText.x + editingText.w);
+  const top = Math.min(editingText.y, editingText.y + editingText.h);
+  const p = toScreen(left, top);
+  textarea.style.left = `${p.x}px`;
+  textarea.style.top = `${p.y}px`;
+  const w = Math.abs(editingText.w * state.scale);
+  const h = Math.abs(editingText.h * state.scale);
+  textarea.style.width = `${w}px`;
+  textarea.style.height = `${h}px`;
+  textarea.style.fontSize = `${h}px`;
+  textarea.style.lineHeight = `${h}px`;
+  textarea.style.color = editingText.color;
+}
+
 canvas.addEventListener('pointerdown', e => {
   canvas.setPointerCapture(e.pointerId);
+  finishTextEdit();
   if (e.button === 2 || space) {
     state.isPanning = true;
     state.startPan = { x: e.clientX, y: e.clientY };
@@ -125,13 +218,15 @@ canvas.addEventListener('pointerdown', e => {
         return;
       }
     }
-    draw();
+    state.isPanning = true;
+    state.startPan = { x: e.clientX, y: e.clientY };
     return;
   }
   state.selected = null;
   if (state.tool === 'draw') state.current = { type: 'path', points: [p] };
   else if (state.tool === 'rect') state.current = { type: 'rect', x: p.x, y: p.y, w: 0, h: 0 };
   else if (state.tool === 'line') state.current = { type: 'line', x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+  else if (state.tool === 'text') state.current = { type: 'text', x: p.x, y: p.y, w: 0, h: 0, text: '', align: 'left', color: currentTextColor };
 });
 
 canvas.addEventListener('pointermove', e => {
@@ -145,7 +240,7 @@ canvas.addEventListener('pointermove', e => {
   }
   const p = toWorld(e.clientX, e.clientY);
   if (state.handle && state.selected) {
-    if (state.selected.type === 'rect') updateRectFromHandle(state.selected, state.handle, p);
+    if (state.selected.type === 'rect' || state.selected.type === 'text') updateRectFromHandle(state.selected, state.handle, p);
     else if (state.selected.type === 'line') updateLineFromHandle(state.selected, state.handle, p);
     else if (state.selected.type === 'path') updatePathFromHandle(state.selected, state.handle, p);
     draw();
@@ -163,6 +258,7 @@ canvas.addEventListener('pointermove', e => {
   if (state.current.type === 'path') state.current.points.push(p);
   else if (state.current.type === 'rect') { state.current.w = p.x - state.current.x; state.current.h = p.y - state.current.y; }
   else if (state.current.type === 'line') { state.current.x2 = p.x; state.current.y2 = p.y; }
+  else if (state.current.type === 'text') { state.current.w = p.x - state.current.x; state.current.h = p.y - state.current.y; }
   draw();
 });
 
@@ -183,9 +279,12 @@ canvas.addEventListener('pointerup', () => {
   if (state.current) {
     pushUndo();
     const obj = state.current;
-    state.objects.push(obj);
     state.current = null;
+    state.objects.push(obj);
     state.selected = obj;
+    if (obj.type === 'text') {
+      startTextEdit(obj);
+    }
     scheduleSave();
     draw();
   }
@@ -208,9 +307,11 @@ function draw(): void {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(state.scale, 0, 0, state.scale, state.pan.x, state.pan.y);
   ctx.lineCap = 'round';
+  ctx.fillStyle = '#000';
   state.objects.forEach(o => drawObj(o));
   if (state.current) drawObj(state.current);
   if (state.selected) drawHandles(state.selected);
+  updateTextAreaPos();
 }
 
 function drawObj(o: DrawObject): void {
@@ -226,13 +327,31 @@ function drawObj(o: DrawObject): void {
   } else if (o.type === 'line') {
     ctx.beginPath();
     ctx.moveTo(o.x1, o.y1); ctx.lineTo(o.x2, o.y2); ctx.stroke();
+  } else if (o.type === 'text') {
+    if (state.selected === o || editingText === o) {
+      const left = Math.min(o.x, o.x + o.w);
+      const top = Math.min(o.y, o.y + o.h);
+      ctx.strokeRect(left, top, Math.abs(o.w), Math.abs(o.h));
+    }
+    if (editingText === o) return;
+    ctx.font = `${Math.abs(o.h)}px sans-serif`;
+    ctx.textAlign = o.align;
+    const left = Math.min(o.x, o.x + o.w);
+    const right = Math.max(o.x, o.x + o.w);
+    const top = Math.min(o.y, o.y + o.h);
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = o.color;
+    let x = left;
+    if (o.align === 'center') x = (left + right) / 2;
+    else if (o.align === 'right') x = right;
+    ctx.fillText(o.text, x, top);
   }
 }
 
 function drawHandles(o: DrawObject): void {
   const r = 6 / state.scale;
   ctx.fillStyle = 'orange';
-  if (o.type === 'rect') {
+  if (o.type === 'rect' || o.type === 'text') {
     const pts = [
       { x: o.x, y: o.y, id: 'tl' },
       { x: o.x + o.w, y: o.y, id: 'tr' },
@@ -266,7 +385,7 @@ function drawHandles(o: DrawObject): void {
 
 function hitTestHandle(o: DrawObject, p: Point): string | null {
   const r = 8 / state.scale;
-  if (o.type === 'rect') {
+  if (o.type === 'rect' || o.type === 'text') {
     const handles = {
       tl: { x: o.x, y: o.y },
       tr: { x: o.x + o.w, y: o.y },
@@ -297,7 +416,7 @@ function hitTestHandle(o: DrawObject, p: Point): string | null {
 
 function hitTestObject(o: DrawObject, p: Point): boolean {
   const tol = 6 / state.scale;
-  if (o.type === 'rect') {
+  if (o.type === 'rect' || o.type === 'text') {
     return p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
   } else if (o.type === 'line') {
     return pointToSegment(p, { x: o.x1, y: o.y1 }, { x: o.x2, y: o.y2 }) <= tol;
@@ -318,7 +437,7 @@ function pointToSegment(p: Point, a: Point, b: Point): number {
 }
 
 function moveObject(o: DrawObject, dx: number, dy: number): void {
-  if (o.type === 'rect') {
+  if (o.type === 'rect' || o.type === 'text') {
     o.x += dx; o.y += dy;
   } else if (o.type === 'line') {
     o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy;
@@ -334,7 +453,7 @@ function updatePathFromHandle(o: PathObj, handle: string, p: Point): void {
   }
 }
 
-function updateRectFromHandle(o: RectObj, handle: string, p: Point): void {
+function updateRectFromHandle(o: RectObj | TextObj, handle: string, p: Point): void {
   const x2 = o.x + o.w;
   const y2 = o.y + o.h;
   switch (handle) {

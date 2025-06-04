@@ -15,6 +15,24 @@ let space = false;
 let saveTimer;
 let undoStack = [];
 let redoStack = [];
+let editingText = null;
+let textarea = null;
+const colorMenu = document.getElementById('text-colors');
+const colorButtons = Array.from(colorMenu.querySelectorAll('button'));
+let currentTextColor = '#000000';
+colorButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        currentTextColor = btn.dataset.color || '#000000';
+        colorButtons.forEach(b => b.classList.toggle('active', b === btn));
+        if (editingText) {
+            editingText.color = currentTextColor;
+            if (textarea)
+                textarea.style.color = currentTextColor;
+            draw();
+            scheduleSave();
+        }
+    });
+});
 function pushUndo() {
     undoStack.push(JSON.parse(JSON.stringify(state.objects)));
     if (undoStack.length > 50)
@@ -29,7 +47,12 @@ function resize() {
 function load() {
     const data = localStorage.getItem('draw-data');
     if (data) {
-        state.objects = JSON.parse(data);
+        state.objects = JSON.parse(data).map(o => {
+            if (o.type === 'text' && !o.color) {
+                o.color = '#000000';
+            }
+            return o;
+        });
     }
 }
 function save() {
@@ -45,10 +68,12 @@ function setTool(t) {
     state.selected = null;
     state.moveStart = undefined;
     canvas.style.cursor = t === 'select' ? 'default' : 'crosshair';
+    colorMenu.classList.toggle('show', t === 'text');
 }
 document.getElementById('tool-draw').onclick = () => setTool('draw');
 document.getElementById('tool-rect').onclick = () => setTool('rect');
 document.getElementById('tool-line').onclick = () => setTool('line');
+document.getElementById('tool-text').onclick = () => setTool('text');
 document.getElementById('tool-select').onclick = () => setTool('select');
 document.getElementById('clear').onclick = clearBoard;
 document.getElementById('undo').onclick = undo;
@@ -68,11 +93,71 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => { if (e.code === 'Space')
     space = false; });
 window.addEventListener('pagehide', save);
+canvas.addEventListener('dblclick', e => {
+    const p = toWorld(e.clientX, e.clientY);
+    if (state.selected && state.selected.type === 'text' && hitTestObject(state.selected, p)) {
+        startTextEdit(state.selected);
+    }
+});
 function toWorld(x, y) {
     return { x: (x - state.pan.x) / state.scale, y: (y - state.pan.y) / state.scale };
 }
+function toScreen(x, y) {
+    return { x: x * state.scale + state.pan.x, y: y * state.scale + state.pan.y };
+}
+function startTextEdit(obj) {
+    finishTextEdit();
+    editingText = obj;
+    textarea = document.createElement('textarea');
+    textarea.className = 'text-edit';
+    textarea.value = obj.text;
+    textarea.style.position = 'fixed';
+    textarea.style.color = obj.color;
+    document.body.appendChild(textarea);
+    currentTextColor = obj.color;
+    colorButtons.forEach(b => b.classList.toggle('active', b.dataset.color === obj.color));
+    colorMenu.classList.add('show');
+    updateTextAreaPos();
+    textarea.focus();
+    textarea.addEventListener('blur', finishTextEdit);
+    textarea.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            textarea.blur();
+        }
+    });
+}
+function finishTextEdit() {
+    if (!textarea || !editingText)
+        return;
+    editingText.text = textarea.value;
+    document.body.removeChild(textarea);
+    textarea = null;
+    editingText = null;
+    if (state.tool !== 'text')
+        colorMenu.classList.remove('show');
+    scheduleSave();
+    draw();
+}
+function updateTextAreaPos() {
+    if (!textarea || !editingText)
+        return;
+    const left = Math.min(editingText.x, editingText.x + editingText.w);
+    const top = Math.min(editingText.y, editingText.y + editingText.h);
+    const p = toScreen(left, top);
+    textarea.style.left = `${p.x}px`;
+    textarea.style.top = `${p.y}px`;
+    const w = Math.abs(editingText.w * state.scale);
+    const h = Math.abs(editingText.h * state.scale);
+    textarea.style.width = `${w}px`;
+    textarea.style.height = `${h}px`;
+    textarea.style.fontSize = `${h}px`;
+    textarea.style.lineHeight = `${h}px`;
+    textarea.style.color = editingText.color;
+}
 canvas.addEventListener('pointerdown', e => {
     canvas.setPointerCapture(e.pointerId);
+    finishTextEdit();
     if (e.button === 2 || space) {
         state.isPanning = true;
         state.startPan = { x: e.clientX, y: e.clientY };
@@ -103,7 +188,8 @@ canvas.addEventListener('pointerdown', e => {
                 return;
             }
         }
-        draw();
+        state.isPanning = true;
+        state.startPan = { x: e.clientX, y: e.clientY };
         return;
     }
     state.selected = null;
@@ -113,6 +199,8 @@ canvas.addEventListener('pointerdown', e => {
         state.current = { type: 'rect', x: p.x, y: p.y, w: 0, h: 0 };
     else if (state.tool === 'line')
         state.current = { type: 'line', x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+    else if (state.tool === 'text')
+        state.current = { type: 'text', x: p.x, y: p.y, w: 0, h: 0, text: '', align: 'left', color: currentTextColor };
 });
 canvas.addEventListener('pointermove', e => {
     if (state.isPanning && state.startPan) {
@@ -125,7 +213,7 @@ canvas.addEventListener('pointermove', e => {
     }
     const p = toWorld(e.clientX, e.clientY);
     if (state.handle && state.selected) {
-        if (state.selected.type === 'rect')
+        if (state.selected.type === 'rect' || state.selected.type === 'text')
             updateRectFromHandle(state.selected, state.handle, p);
         else if (state.selected.type === 'line')
             updateLineFromHandle(state.selected, state.handle, p);
@@ -154,6 +242,10 @@ canvas.addEventListener('pointermove', e => {
         state.current.x2 = p.x;
         state.current.y2 = p.y;
     }
+    else if (state.current.type === 'text') {
+        state.current.w = p.x - state.current.x;
+        state.current.h = p.y - state.current.y;
+    }
     draw();
 });
 canvas.addEventListener('pointerup', () => {
@@ -176,9 +268,12 @@ canvas.addEventListener('pointerup', () => {
     if (state.current) {
         pushUndo();
         const obj = state.current;
-        state.objects.push(obj);
         state.current = null;
+        state.objects.push(obj);
         state.selected = obj;
+        if (obj.type === 'text') {
+            startTextEdit(obj);
+        }
         scheduleSave();
         draw();
     }
@@ -199,11 +294,13 @@ function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(state.scale, 0, 0, state.scale, state.pan.x, state.pan.y);
     ctx.lineCap = 'round';
+    ctx.fillStyle = '#000';
     state.objects.forEach(o => drawObj(o));
     if (state.current)
         drawObj(state.current);
     if (state.selected)
         drawHandles(state.selected);
+    updateTextAreaPos();
 }
 function drawObj(o) {
     ctx.strokeStyle = '#000';
@@ -223,11 +320,33 @@ function drawObj(o) {
         ctx.lineTo(o.x2, o.y2);
         ctx.stroke();
     }
+    else if (o.type === 'text') {
+        if (state.selected === o || editingText === o) {
+            const left = Math.min(o.x, o.x + o.w);
+            const top = Math.min(o.y, o.y + o.h);
+            ctx.strokeRect(left, top, Math.abs(o.w), Math.abs(o.h));
+        }
+        if (editingText === o)
+            return;
+        ctx.font = `${Math.abs(o.h)}px sans-serif`;
+        ctx.textAlign = o.align;
+        const left = Math.min(o.x, o.x + o.w);
+        const right = Math.max(o.x, o.x + o.w);
+        const top = Math.min(o.y, o.y + o.h);
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = o.color;
+        let x = left;
+        if (o.align === 'center')
+            x = (left + right) / 2;
+        else if (o.align === 'right')
+            x = right;
+        ctx.fillText(o.text, x, top);
+    }
 }
 function drawHandles(o) {
     const r = 6 / state.scale;
     ctx.fillStyle = 'orange';
-    if (o.type === 'rect') {
+    if (o.type === 'rect' || o.type === 'text') {
         const pts = [
             { x: o.x, y: o.y, id: 'tl' },
             { x: o.x + o.w, y: o.y, id: 'tr' },
@@ -261,7 +380,7 @@ function drawHandles(o) {
 }
 function hitTestHandle(o, p) {
     const r = 8 / state.scale;
-    if (o.type === 'rect') {
+    if (o.type === 'rect' || o.type === 'text') {
         const handles = {
             tl: { x: o.x, y: o.y },
             tr: { x: o.x + o.w, y: o.y },
@@ -296,7 +415,7 @@ function hitTestHandle(o, p) {
 }
 function hitTestObject(o, p) {
     const tol = 6 / state.scale;
-    if (o.type === 'rect') {
+    if (o.type === 'rect' || o.type === 'text') {
         return p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
     }
     else if (o.type === 'line') {
@@ -318,7 +437,7 @@ function pointToSegment(p, a, b) {
     return Math.hypot(p.x - px, p.y - py);
 }
 function moveObject(o, dx, dy) {
-    if (o.type === 'rect') {
+    if (o.type === 'rect' || o.type === 'text') {
         o.x += dx;
         o.y += dy;
     }
