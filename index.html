@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whiteboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="board" width="5000" height="5000"></canvas>
+<div id="toolbar">
+  <button id="tool-draw" title="Pincel"><img src="icons/pencil.svg" alt="Pincel"></button>
+  <button id="tool-rect" title="Rect\u00e1ngulo"><img src="icons/rect.svg" alt="Rect\u00e1ngulo"></button>
+  <button id="tool-line" title="L\u00ednea"><img src="icons/line.svg" alt="L\u00ednea"></button>
+</div>
+<script src="script.js"></script>
+<script>
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js'); }
+</script>
+</body>
+</html>
