@@ -3,10 +3,11 @@ interface Point { x: number; y: number; }
 interface PathObj { type: 'path'; points: Point[]; }
 interface RectObj { type: 'rect'; x: number; y: number; w: number; h: number; }
 interface LineObj { type: 'line'; x1: number; y1: number; x2: number; y2: number; }
-type DrawObject = PathObj | RectObj | LineObj;
+interface TextObj { type: 'text'; x: number; y: number; w: number; h: number; text: string; align: CanvasTextAlign; }
+type DrawObject = PathObj | RectObj | LineObj | TextObj;
 
 interface State {
-  tool: 'draw' | 'rect' | 'line' | 'select';
+  tool: 'draw' | 'rect' | 'line' | 'text' | 'select';
   objects: DrawObject[];
   current: DrawObject | null;
   selected: DrawObject | null;
@@ -76,6 +77,7 @@ function setTool(t: State['tool']): void {
 document.getElementById('tool-draw')!.onclick = () => setTool('draw');
 document.getElementById('tool-rect')!.onclick = () => setTool('rect');
 document.getElementById('tool-line')!.onclick = () => setTool('line');
+document.getElementById('tool-text')!.onclick = () => setTool('text');
 document.getElementById('tool-select')!.onclick = () => setTool('select');
 document.getElementById('clear')!.onclick = clearBoard;
 document.getElementById('undo')!.onclick = undo;
@@ -88,6 +90,15 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { if (e.code === 'Space') space = false; });
 window.addEventListener('pagehide', save);
+canvas.addEventListener('dblclick', e => {
+  const p = toWorld(e.clientX, e.clientY);
+  if (state.selected && state.selected.type === 'text' && hitTestObject(state.selected, p)) {
+    const t = prompt('Editar texto:', state.selected.text) ?? state.selected.text;
+    state.selected.text = t;
+    scheduleSave();
+    draw();
+  }
+});
 
 function toWorld(x: number, y: number): Point {
   return { x: (x - state.pan.x) / state.scale, y: (y - state.pan.y) / state.scale };
@@ -125,13 +136,15 @@ canvas.addEventListener('pointerdown', e => {
         return;
       }
     }
-    draw();
+    state.isPanning = true;
+    state.startPan = { x: e.clientX, y: e.clientY };
     return;
   }
   state.selected = null;
   if (state.tool === 'draw') state.current = { type: 'path', points: [p] };
   else if (state.tool === 'rect') state.current = { type: 'rect', x: p.x, y: p.y, w: 0, h: 0 };
   else if (state.tool === 'line') state.current = { type: 'line', x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+  else if (state.tool === 'text') state.current = { type: 'text', x: p.x, y: p.y, w: 0, h: 0, text: '', align: 'left' };
 });
 
 canvas.addEventListener('pointermove', e => {
@@ -145,7 +158,7 @@ canvas.addEventListener('pointermove', e => {
   }
   const p = toWorld(e.clientX, e.clientY);
   if (state.handle && state.selected) {
-    if (state.selected.type === 'rect') updateRectFromHandle(state.selected, state.handle, p);
+    if (state.selected.type === 'rect' || state.selected.type === 'text') updateRectFromHandle(state.selected, state.handle, p);
     else if (state.selected.type === 'line') updateLineFromHandle(state.selected, state.handle, p);
     else if (state.selected.type === 'path') updatePathFromHandle(state.selected, state.handle, p);
     draw();
@@ -163,6 +176,7 @@ canvas.addEventListener('pointermove', e => {
   if (state.current.type === 'path') state.current.points.push(p);
   else if (state.current.type === 'rect') { state.current.w = p.x - state.current.x; state.current.h = p.y - state.current.y; }
   else if (state.current.type === 'line') { state.current.x2 = p.x; state.current.y2 = p.y; }
+  else if (state.current.type === 'text') { state.current.w = p.x - state.current.x; state.current.h = p.y - state.current.y; }
   draw();
 });
 
@@ -183,6 +197,11 @@ canvas.addEventListener('pointerup', () => {
   if (state.current) {
     pushUndo();
     const obj = state.current;
+    if (obj.type === 'text') {
+      const t = prompt('Texto:', obj.text) ?? '';
+      obj.text = t;
+      if (!t.trim()) { state.current = null; draw(); return; }
+    }
     state.objects.push(obj);
     state.current = null;
     state.selected = obj;
@@ -226,13 +245,19 @@ function drawObj(o: DrawObject): void {
   } else if (o.type === 'line') {
     ctx.beginPath();
     ctx.moveTo(o.x1, o.y1); ctx.lineTo(o.x2, o.y2); ctx.stroke();
+  } else if (o.type === 'text') {
+    ctx.strokeRect(o.x, o.y, o.w, o.h);
+    ctx.textAlign = o.align;
+    const x = o.align === 'center' ? o.x + o.w / 2 : o.align === 'right' ? o.x + o.w : o.x;
+    ctx.textBaseline = 'top';
+    ctx.fillText(o.text, x, o.y);
   }
 }
 
 function drawHandles(o: DrawObject): void {
   const r = 6 / state.scale;
   ctx.fillStyle = 'orange';
-  if (o.type === 'rect') {
+  if (o.type === 'rect' || o.type === 'text') {
     const pts = [
       { x: o.x, y: o.y, id: 'tl' },
       { x: o.x + o.w, y: o.y, id: 'tr' },
@@ -266,7 +291,7 @@ function drawHandles(o: DrawObject): void {
 
 function hitTestHandle(o: DrawObject, p: Point): string | null {
   const r = 8 / state.scale;
-  if (o.type === 'rect') {
+  if (o.type === 'rect' || o.type === 'text') {
     const handles = {
       tl: { x: o.x, y: o.y },
       tr: { x: o.x + o.w, y: o.y },
@@ -297,7 +322,7 @@ function hitTestHandle(o: DrawObject, p: Point): string | null {
 
 function hitTestObject(o: DrawObject, p: Point): boolean {
   const tol = 6 / state.scale;
-  if (o.type === 'rect') {
+  if (o.type === 'rect' || o.type === 'text') {
     return p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
   } else if (o.type === 'line') {
     return pointToSegment(p, { x: o.x1, y: o.y1 }, { x: o.x2, y: o.y2 }) <= tol;
@@ -318,7 +343,7 @@ function pointToSegment(p: Point, a: Point, b: Point): number {
 }
 
 function moveObject(o: DrawObject, dx: number, dy: number): void {
-  if (o.type === 'rect') {
+  if (o.type === 'rect' || o.type === 'text') {
     o.x += dx; o.y += dy;
   } else if (o.type === 'line') {
     o.x1 += dx; o.y1 += dy; o.x2 += dx; o.y2 += dy;
@@ -334,7 +359,7 @@ function updatePathFromHandle(o: PathObj, handle: string, p: Point): void {
   }
 }
 
-function updateRectFromHandle(o: RectObj, handle: string, p: Point): void {
+function updateRectFromHandle(o: RectObj | TextObj, handle: string, p: Point): void {
   const x2 = o.x + o.w;
   const y2 = o.y + o.h;
   switch (handle) {
