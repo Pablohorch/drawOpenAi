@@ -49,6 +49,7 @@ function setTool(t) {
 document.getElementById('tool-draw').onclick = () => setTool('draw');
 document.getElementById('tool-rect').onclick = () => setTool('rect');
 document.getElementById('tool-line').onclick = () => setTool('line');
+document.getElementById('tool-text').onclick = () => setTool('text');
 document.getElementById('tool-select').onclick = () => setTool('select');
 document.getElementById('clear').onclick = clearBoard;
 document.getElementById('undo').onclick = undo;
@@ -68,6 +69,16 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => { if (e.code === 'Space')
     space = false; });
 window.addEventListener('pagehide', save);
+canvas.addEventListener('dblclick', e => {
+    var _a;
+    const p = toWorld(e.clientX, e.clientY);
+    if (state.selected && state.selected.type === 'text' && hitTestObject(state.selected, p)) {
+        const t = (_a = prompt('Editar texto:', state.selected.text)) !== null && _a !== void 0 ? _a : state.selected.text;
+        state.selected.text = t;
+        scheduleSave();
+        draw();
+    }
+});
 function toWorld(x, y) {
     return { x: (x - state.pan.x) / state.scale, y: (y - state.pan.y) / state.scale };
 }
@@ -103,7 +114,8 @@ canvas.addEventListener('pointerdown', e => {
                 return;
             }
         }
-        draw();
+        state.isPanning = true;
+        state.startPan = { x: e.clientX, y: e.clientY };
         return;
     }
     state.selected = null;
@@ -113,6 +125,8 @@ canvas.addEventListener('pointerdown', e => {
         state.current = { type: 'rect', x: p.x, y: p.y, w: 0, h: 0 };
     else if (state.tool === 'line')
         state.current = { type: 'line', x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+    else if (state.tool === 'text')
+        state.current = { type: 'text', x: p.x, y: p.y, w: 0, h: 0, text: '', align: 'left' };
 });
 canvas.addEventListener('pointermove', e => {
     if (state.isPanning && state.startPan) {
@@ -125,7 +139,7 @@ canvas.addEventListener('pointermove', e => {
     }
     const p = toWorld(e.clientX, e.clientY);
     if (state.handle && state.selected) {
-        if (state.selected.type === 'rect')
+        if (state.selected.type === 'rect' || state.selected.type === 'text')
             updateRectFromHandle(state.selected, state.handle, p);
         else if (state.selected.type === 'line')
             updateLineFromHandle(state.selected, state.handle, p);
@@ -154,9 +168,14 @@ canvas.addEventListener('pointermove', e => {
         state.current.x2 = p.x;
         state.current.y2 = p.y;
     }
+    else if (state.current.type === 'text') {
+        state.current.w = p.x - state.current.x;
+        state.current.h = p.y - state.current.y;
+    }
     draw();
 });
 canvas.addEventListener('pointerup', () => {
+    var _a;
     if (state.isPanning) {
         state.isPanning = false;
         return;
@@ -176,6 +195,15 @@ canvas.addEventListener('pointerup', () => {
     if (state.current) {
         pushUndo();
         const obj = state.current;
+        if (obj.type === 'text') {
+            const t = (_a = prompt('Texto:', obj.text)) !== null && _a !== void 0 ? _a : '';
+            obj.text = t;
+            if (!t.trim()) {
+                state.current = null;
+                draw();
+                return;
+            }
+        }
         state.objects.push(obj);
         state.current = null;
         state.selected = obj;
@@ -223,11 +251,18 @@ function drawObj(o) {
         ctx.lineTo(o.x2, o.y2);
         ctx.stroke();
     }
+    else if (o.type === 'text') {
+        ctx.strokeRect(o.x, o.y, o.w, o.h);
+        ctx.textAlign = o.align;
+        const x = o.align === 'center' ? o.x + o.w / 2 : o.align === 'right' ? o.x + o.w : o.x;
+        ctx.textBaseline = 'top';
+        ctx.fillText(o.text, x, o.y);
+    }
 }
 function drawHandles(o) {
     const r = 6 / state.scale;
     ctx.fillStyle = 'orange';
-    if (o.type === 'rect') {
+    if (o.type === 'rect' || o.type === 'text') {
         const pts = [
             { x: o.x, y: o.y, id: 'tl' },
             { x: o.x + o.w, y: o.y, id: 'tr' },
@@ -261,7 +296,7 @@ function drawHandles(o) {
 }
 function hitTestHandle(o, p) {
     const r = 8 / state.scale;
-    if (o.type === 'rect') {
+    if (o.type === 'rect' || o.type === 'text') {
         const handles = {
             tl: { x: o.x, y: o.y },
             tr: { x: o.x + o.w, y: o.y },
@@ -296,7 +331,7 @@ function hitTestHandle(o, p) {
 }
 function hitTestObject(o, p) {
     const tol = 6 / state.scale;
-    if (o.type === 'rect') {
+    if (o.type === 'rect' || o.type === 'text') {
         return p.x >= o.x && p.x <= o.x + o.w && p.y >= o.y && p.y <= o.y + o.h;
     }
     else if (o.type === 'line') {
@@ -318,7 +353,7 @@ function pointToSegment(p, a, b) {
     return Math.hypot(p.x - px, p.y - py);
 }
 function moveObject(o, dx, dy) {
-    if (o.type === 'rect') {
+    if (o.type === 'rect' || o.type === 'text') {
         o.x += dx;
         o.y += dy;
     }
