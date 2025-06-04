@@ -9,6 +9,8 @@ interface State {
   tool: 'draw' | 'rect' | 'line';
   objects: DrawObject[];
   current: DrawObject | null;
+  selected: DrawObject | null;
+  handle?: string;
   pan: Point;
   startPan?: Point;
   scale: number;
@@ -22,6 +24,7 @@ let state: State = {
   tool: 'draw',
   objects: [],
   current: null,
+  selected: null,
   pan: { x: 0, y: 0 },
   scale: 1,
   isPanning: false,
@@ -63,6 +66,7 @@ function scheduleSave(): void {
 function setTool(t: State['tool']): void {
   state.tool = t;
   state.current = null;
+  state.selected = null;
   canvas.style.cursor = 'crosshair';
 }
 
@@ -93,6 +97,15 @@ canvas.addEventListener('pointerdown', e => {
     return;
   }
   const p = toWorld(e.clientX, e.clientY);
+  if (state.selected) {
+    const h = hitTestHandle(state.selected, p);
+    if (h) {
+      state.handle = h;
+      pushUndo();
+      return;
+    }
+  }
+  state.selected = null;
   if (state.tool === 'draw') state.current = { type: 'path', points: [p] };
   else if (state.tool === 'rect') state.current = { type: 'rect', x: p.x, y: p.y, w: 0, h: 0 };
   else if (state.tool === 'line') state.current = { type: 'line', x1: p.x, y1: p.y, x2: p.x, y2: p.y };
@@ -107,8 +120,14 @@ canvas.addEventListener('pointermove', e => {
     draw();
     return;
   }
-  if (!state.current) return;
   const p = toWorld(e.clientX, e.clientY);
+  if (state.handle && state.selected) {
+    if (state.selected.type === 'rect') updateRectFromHandle(state.selected, state.handle, p);
+    else if (state.selected.type === 'line') updateLineFromHandle(state.selected, state.handle, p);
+    draw();
+    return;
+  }
+  if (!state.current) return;
   if (state.current.type === 'path') state.current.points.push(p);
   else if (state.current.type === 'rect') { state.current.w = p.x - state.current.x; state.current.h = p.y - state.current.y; }
   else if (state.current.type === 'line') { state.current.x2 = p.x; state.current.y2 = p.y; }
@@ -117,10 +136,18 @@ canvas.addEventListener('pointermove', e => {
 
 canvas.addEventListener('pointerup', () => {
   if (state.isPanning) { state.isPanning = false; return; }
+  if (state.handle) {
+    state.handle = undefined;
+    scheduleSave();
+    draw();
+    return;
+  }
   if (state.current) {
     pushUndo();
-    state.objects.push(state.current);
+    const obj = state.current;
+    state.objects.push(obj);
     state.current = null;
+    state.selected = obj;
     scheduleSave();
     draw();
   }
@@ -145,6 +172,7 @@ function draw(): void {
   ctx.lineCap = 'round';
   state.objects.forEach(o => drawObj(o));
   if (state.current) drawObj(state.current);
+  if (state.selected) drawHandles(state.selected);
 }
 
 function drawObj(o: DrawObject): void {
@@ -161,6 +189,79 @@ function drawObj(o: DrawObject): void {
     ctx.beginPath();
     ctx.moveTo(o.x1, o.y1); ctx.lineTo(o.x2, o.y2); ctx.stroke();
   }
+}
+
+function drawHandles(o: DrawObject): void {
+  const r = 6 / state.scale;
+  ctx.fillStyle = 'orange';
+  if (o.type === 'rect') {
+    const pts = [
+      { x: o.x, y: o.y, id: 'tl' },
+      { x: o.x + o.w, y: o.y, id: 'tr' },
+      { x: o.x, y: o.y + o.h, id: 'bl' },
+      { x: o.x + o.w, y: o.y + o.h, id: 'br' },
+    ];
+    pts.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  } else if (o.type === 'line') {
+    const pts = [
+      { x: o.x1, y: o.y1, id: 'start' },
+      { x: o.x2, y: o.y2, id: 'end' },
+    ];
+    pts.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+}
+
+function hitTestHandle(o: DrawObject, p: Point): string | null {
+  const r = 8 / state.scale;
+  if (o.type === 'rect') {
+    const handles = {
+      tl: { x: o.x, y: o.y },
+      tr: { x: o.x + o.w, y: o.y },
+      bl: { x: o.x, y: o.y + o.h },
+      br: { x: o.x + o.w, y: o.y + o.h },
+    } as const;
+    for (const key in handles) {
+      const h = handles[key as keyof typeof handles];
+      const dx = p.x - h.x, dy = p.y - h.y;
+      if (dx * dx + dy * dy <= r * r) return key;
+    }
+  } else if (o.type === 'line') {
+    const handles = { start: { x: o.x1, y: o.y1 }, end: { x: o.x2, y: o.y2 } };
+    for (const key in handles) {
+      const h = handles[key as keyof typeof handles];
+      const dx = p.x - h.x, dy = p.y - h.y;
+      if (dx * dx + dy * dy <= r * r) return key;
+    }
+  }
+  return null;
+}
+
+function updateRectFromHandle(o: RectObj, handle: string, p: Point): void {
+  const x2 = o.x + o.w;
+  const y2 = o.y + o.h;
+  switch (handle) {
+    case 'tl':
+      o.x = p.x; o.y = p.y; o.w = x2 - p.x; o.h = y2 - p.y; break;
+    case 'tr':
+      o.y = p.y; o.w = p.x - o.x; o.h = y2 - p.y; break;
+    case 'bl':
+      o.x = p.x; o.w = x2 - p.x; o.h = p.y - o.y; break;
+    case 'br':
+      o.w = p.x - o.x; o.h = p.y - o.y; break;
+  }
+}
+
+function updateLineFromHandle(o: LineObj, handle: string, p: Point): void {
+  if (handle === 'start') { o.x1 = p.x; o.y1 = p.y; }
+  else if (handle === 'end') { o.x2 = p.x; o.y2 = p.y; }
 }
 
 function clearBoard(): void {
