@@ -1,10 +1,10 @@
 # drawOpenAi Whiteboard
 
-Aplicaci\u00f3n de pizarra infinita desarrollada en HTML, CSS y JavaScript puro.
+Aplicaci\u00f3n de pizarra infinita desarrollada en HTML, CSS y TypeScript.
 
 ## Uso local
 
-Abre `index.html` en un navegador moderno. El dibujo se guarda autom\u00e1ticamente en `localStorage` y se restaura al recargar.
+Ejecuta `tsc` para generar `script.js` y abre `index.html` en un navegador moderno. El dibujo se guarda autom\u00e1ticamente en `localStorage` y se restaura al recargar.
 
 ### Controles
 
