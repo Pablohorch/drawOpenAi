@@ -1,5 +1,5 @@
 // Bump cache version whenever static assets change
-const CACHE='static-v3';
+const CACHE='static-v4';
 const ASSETS=[
   './',
   'index.html',
