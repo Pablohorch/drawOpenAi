@@ -10,6 +10,7 @@ Ejecuta `tsc` para generar `script.js` y abre `index.html` en un navegador moder
 
 - **Pincel**: traza l\u00edneas libres.
 - **Rect\u00e1ngulo** y **L\u00ednea**: haz clic y arrastra.
+- **Seleccionar**: pulsa sobre cualquier forma para moverla o ajustar sus v\u00e9rtices.
 - **Pan**: mant\u00e9n pulsada la barra espaciadora o usa el bot\u00f3n derecho del rat\u00f3n y arrastra.
 - **Zoom**: rueda del rat\u00f3n o gesto de pellizco.
 
