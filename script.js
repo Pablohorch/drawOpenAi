@@ -11,6 +11,14 @@ let state = {
 };
 let space = false;
 let saveTimer;
+let undoStack = [];
+let redoStack = [];
+function pushUndo() {
+    undoStack.push(JSON.parse(JSON.stringify(state.objects)));
+    if (undoStack.length > 50)
+        undoStack.shift();
+    redoStack = [];
+}
 function resize() {
     state.pan.x = (window.innerWidth - canvas.width) / 2;
     state.pan.y = (window.innerHeight - canvas.height) / 2;
@@ -37,8 +45,21 @@ function setTool(t) {
 document.getElementById('tool-draw').onclick = () => setTool('draw');
 document.getElementById('tool-rect').onclick = () => setTool('rect');
 document.getElementById('tool-line').onclick = () => setTool('line');
-window.addEventListener('keydown', e => { if (e.code === 'Space')
-    space = true; });
+document.getElementById('clear').onclick = clearBoard;
+document.getElementById('undo').onclick = undo;
+document.getElementById('redo').onclick = redo;
+window.addEventListener('keydown', e => {
+    if (e.code === 'Space')
+        space = true;
+    if (e.ctrlKey && e.code === 'KeyZ') {
+        e.preventDefault();
+        undo();
+    }
+    if (e.ctrlKey && e.code === 'KeyY') {
+        e.preventDefault();
+        redo();
+    }
+});
 window.addEventListener('keyup', e => { if (e.code === 'Space')
     space = false; });
 window.addEventListener('pagehide', save);
@@ -90,6 +111,7 @@ canvas.addEventListener('pointerup', () => {
         return;
     }
     if (state.current) {
+        pushUndo();
         state.objects.push(state.current);
         state.current = null;
         scheduleSave();
@@ -134,6 +156,32 @@ function drawObj(o) {
         ctx.lineTo(o.x2, o.y2);
         ctx.stroke();
     }
+}
+function clearBoard() {
+    if (state.objects.length === 0)
+        return;
+    pushUndo();
+    state.objects = [];
+    scheduleSave();
+    draw();
+}
+function undo() {
+    const prev = undoStack.pop();
+    if (!prev)
+        return;
+    redoStack.push(JSON.parse(JSON.stringify(state.objects)));
+    state.objects = prev;
+    scheduleSave();
+    draw();
+}
+function redo() {
+    const next = redoStack.pop();
+    if (!next)
+        return;
+    undoStack.push(JSON.parse(JSON.stringify(state.objects)));
+    state.objects = next;
+    scheduleSave();
+    draw();
 }
 window.oncontextmenu = e => e.preventDefault();
 load();
