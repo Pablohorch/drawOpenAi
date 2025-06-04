@@ -29,6 +29,14 @@ let state: State = {
 
 let space = false;
 let saveTimer: number;
+let undoStack: DrawObject[][] = [];
+let redoStack: DrawObject[][] = [];
+
+function pushUndo(): void {
+  undoStack.push(JSON.parse(JSON.stringify(state.objects)));
+  if (undoStack.length > 50) undoStack.shift();
+  redoStack = [];
+}
 
 function resize(): void {
   state.pan.x = (window.innerWidth - canvas.width) / 2;
@@ -61,8 +69,15 @@ function setTool(t: State['tool']): void {
 document.getElementById('tool-draw')!.onclick = () => setTool('draw');
 document.getElementById('tool-rect')!.onclick = () => setTool('rect');
 document.getElementById('tool-line')!.onclick = () => setTool('line');
+document.getElementById('clear')!.onclick = clearBoard;
+document.getElementById('undo')!.onclick = undo;
+document.getElementById('redo')!.onclick = redo;
 
-window.addEventListener('keydown', e => { if (e.code === 'Space') space = true; });
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') space = true;
+  if (e.ctrlKey && e.code === 'KeyZ') { e.preventDefault(); undo(); }
+  if (e.ctrlKey && e.code === 'KeyY') { e.preventDefault(); redo(); }
+});
 window.addEventListener('keyup', e => { if (e.code === 'Space') space = false; });
 window.addEventListener('pagehide', save);
 
@@ -102,7 +117,13 @@ canvas.addEventListener('pointermove', e => {
 
 canvas.addEventListener('pointerup', () => {
   if (state.isPanning) { state.isPanning = false; return; }
-  if (state.current) { state.objects.push(state.current); state.current = null; scheduleSave(); draw(); }
+  if (state.current) {
+    pushUndo();
+    state.objects.push(state.current);
+    state.current = null;
+    scheduleSave();
+    draw();
+  }
 });
 
 canvas.addEventListener('wheel', e => {
@@ -140,6 +161,32 @@ function drawObj(o: DrawObject): void {
     ctx.beginPath();
     ctx.moveTo(o.x1, o.y1); ctx.lineTo(o.x2, o.y2); ctx.stroke();
   }
+}
+
+function clearBoard(): void {
+  if (state.objects.length === 0) return;
+  pushUndo();
+  state.objects = [];
+  scheduleSave();
+  draw();
+}
+
+function undo(): void {
+  const prev = undoStack.pop();
+  if (!prev) return;
+  redoStack.push(JSON.parse(JSON.stringify(state.objects)));
+  state.objects = prev;
+  scheduleSave();
+  draw();
+}
+
+function redo(): void {
+  const next = redoStack.pop();
+  if (!next) return;
+  undoStack.push(JSON.parse(JSON.stringify(state.objects)));
+  state.objects = next;
+  scheduleSave();
+  draw();
 }
 
 window.oncontextmenu = e => e.preventDefault();
