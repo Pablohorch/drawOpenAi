@@ -114,7 +114,10 @@ function finishTextEdit() {
 function updateTextAreaPos() {
     if (!textarea || !editingText)
         return;
-    const p = toScreen(editingText.x, editingText.y);
+    const left = Math.min(editingText.x, editingText.x + editingText.w);
+    const top = Math.min(editingText.y, editingText.y + editingText.h);
+    const p = toScreen(left, top);
+
     textarea.style.left = `${p.x}px`;
     textarea.style.top = `${p.y}px`;
     const w = Math.abs(editingText.w * state.scale);
@@ -263,6 +266,7 @@ function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(state.scale, 0, 0, state.scale, state.pan.x, state.pan.y);
     ctx.lineCap = 'round';
+    ctx.fillStyle = '#000';
     state.objects.forEach(o => drawObj(o));
     if (state.current)
         drawObj(state.current);
@@ -290,15 +294,26 @@ function drawObj(o) {
     }
     else if (o.type === 'text') {
         if (state.selected === o || editingText === o) {
-            ctx.strokeRect(o.x, o.y, o.w, o.h);
+            const left = Math.min(o.x, o.x + o.w);
+            const top = Math.min(o.y, o.y + o.h);
+            ctx.strokeRect(left, top, Math.abs(o.w), Math.abs(o.h));
+
         }
         if (editingText === o)
             return;
         ctx.font = `${Math.abs(o.h)}px sans-serif`;
         ctx.textAlign = o.align;
-        const x = o.align === 'center' ? o.x + o.w / 2 : o.align === 'right' ? o.x + o.w : o.x;
+        const left = Math.min(o.x, o.x + o.w);
+        const right = Math.max(o.x, o.x + o.w);
+        const top = Math.min(o.y, o.y + o.h);
         ctx.textBaseline = 'top';
-        ctx.fillText(o.text, x, o.y);
+        ctx.fillStyle = '#000';
+        let x = left;
+        if (o.align === 'center')
+            x = (left + right) / 2;
+        else if (o.align === 'right')
+            x = right;
+        ctx.fillText(o.text, x, top);
     }
 }
 function drawHandles(o) {
