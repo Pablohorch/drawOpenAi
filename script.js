@@ -145,6 +145,7 @@ function updateTextAreaPos() {
     const left = Math.min(editingText.x, editingText.x + editingText.w);
     const top = Math.min(editingText.y, editingText.y + editingText.h);
     const p = toScreen(left, top);
+
     textarea.style.left = `${p.x}px`;
     textarea.style.top = `${p.y}px`;
     const w = Math.abs(editingText.w * state.scale);
@@ -325,6 +326,7 @@ function drawObj(o) {
             const left = Math.min(o.x, o.x + o.w);
             const top = Math.min(o.y, o.y + o.h);
             ctx.strokeRect(left, top, Math.abs(o.w), Math.abs(o.h));
+
         }
         if (editingText === o)
             return;
@@ -335,6 +337,7 @@ function drawObj(o) {
         const top = Math.min(o.y, o.y + o.h);
         ctx.textBaseline = 'top';
         ctx.fillStyle = o.color;
+
         let x = left;
         if (o.align === 'center')
             x = (left + right) / 2;
