@@ -3,7 +3,16 @@ interface Point { x: number; y: number; }
 interface PathObj { type: 'path'; points: Point[]; }
 interface RectObj { type: 'rect'; x: number; y: number; w: number; h: number; }
 interface LineObj { type: 'line'; x1: number; y1: number; x2: number; y2: number; }
-interface TextObj { type: 'text'; x: number; y: number; w: number; h: number; text: string; align: CanvasTextAlign; }
+interface TextObj {
+  type: 'text';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  align: CanvasTextAlign;
+  color: string;
+}
 type DrawObject = PathObj | RectObj | LineObj | TextObj;
 
 interface State {
@@ -40,6 +49,21 @@ let redoStack: DrawObject[][] = [];
 
 let editingText: TextObj | null = null;
 let textarea: HTMLTextAreaElement | null = null;
+const colorMenu = document.getElementById('text-colors') as HTMLDivElement;
+const colorButtons = Array.from(colorMenu.querySelectorAll<HTMLButtonElement>('button'));
+let currentTextColor = '#000000';
+colorButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentTextColor = btn.dataset.color || '#000000';
+    colorButtons.forEach(b => b.classList.toggle('active', b === btn));
+    if (editingText) {
+      editingText.color = currentTextColor;
+      if (textarea) textarea.style.color = currentTextColor;
+      draw();
+      scheduleSave();
+    }
+  });
+});
 
 function pushUndo(): void {
   undoStack.push(JSON.parse(JSON.stringify(state.objects)));
@@ -56,7 +80,12 @@ function resize(): void {
 function load(): void {
   const data = localStorage.getItem('draw-data');
   if (data) {
-    state.objects = JSON.parse(data) as DrawObject[];
+    state.objects = (JSON.parse(data) as DrawObject[]).map(o => {
+      if (o.type === 'text' && !(o as TextObj).color) {
+        (o as TextObj).color = '#000000';
+      }
+      return o;
+    });
   }
 }
 
@@ -75,6 +104,7 @@ function setTool(t: State['tool']): void {
   state.selected = null;
   state.moveStart = undefined;
   canvas.style.cursor = t === 'select' ? 'default' : 'crosshair';
+  colorMenu.classList.toggle('show', t === 'text');
 }
 
 document.getElementById('tool-draw')!.onclick = () => setTool('draw');
@@ -115,7 +145,11 @@ function startTextEdit(obj: TextObj): void {
   textarea.className = 'text-edit';
   textarea.value = obj.text;
   textarea.style.position = 'fixed';
+  textarea.style.color = obj.color;
   document.body.appendChild(textarea);
+  currentTextColor = obj.color;
+  colorButtons.forEach(b => b.classList.toggle('active', b.dataset.color === obj.color));
+  colorMenu.classList.add('show');
   updateTextAreaPos();
   textarea.focus();
   textarea.addEventListener('blur', finishTextEdit);
@@ -130,6 +164,7 @@ function finishTextEdit(): void {
   document.body.removeChild(textarea);
   textarea = null;
   editingText = null;
+  if (state.tool !== 'text') colorMenu.classList.remove('show');
   scheduleSave();
   draw();
 }
@@ -147,6 +182,7 @@ function updateTextAreaPos(): void {
   textarea.style.height = `${h}px`;
   textarea.style.fontSize = `${h}px`;
   textarea.style.lineHeight = `${h}px`;
+  textarea.style.color = editingText.color;
 }
 
 canvas.addEventListener('pointerdown', e => {
@@ -190,7 +226,7 @@ canvas.addEventListener('pointerdown', e => {
   if (state.tool === 'draw') state.current = { type: 'path', points: [p] };
   else if (state.tool === 'rect') state.current = { type: 'rect', x: p.x, y: p.y, w: 0, h: 0 };
   else if (state.tool === 'line') state.current = { type: 'line', x1: p.x, y1: p.y, x2: p.x, y2: p.y };
-  else if (state.tool === 'text') state.current = { type: 'text', x: p.x, y: p.y, w: 0, h: 0, text: '', align: 'left' };
+  else if (state.tool === 'text') state.current = { type: 'text', x: p.x, y: p.y, w: 0, h: 0, text: '', align: 'left', color: currentTextColor };
 });
 
 canvas.addEventListener('pointermove', e => {
@@ -304,7 +340,7 @@ function drawObj(o: DrawObject): void {
     const right = Math.max(o.x, o.x + o.w);
     const top = Math.min(o.y, o.y + o.h);
     ctx.textBaseline = 'top';
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = o.color;
     let x = left;
     if (o.align === 'center') x = (left + right) / 2;
     else if (o.align === 'right') x = right;

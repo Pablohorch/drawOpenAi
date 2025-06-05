@@ -6,3 +6,7 @@ html,body{margin:0;height:100%;overflow:hidden;font-family:sans-serif;}
 #actions button{background:none;border:none;width:40px;height:40px;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer;}
 #actions img{width:24px;height:24px;pointer-events:none;}
 .text-edit{position:fixed;margin:0;padding:0;border:1px dashed orange;resize:none;overflow:hidden;background:transparent;color:#000;outline:none;font-family:sans-serif;}
+#text-colors{position:fixed;left:20px;bottom:80px;display:none;flex-direction:column;gap:8px;background:rgba(255,255,255,.9);padding:8px;border-radius:10px;box-shadow:0 0 8px rgba(0,0,0,.2);}
+#text-colors.show{display:flex;}
+#text-colors button{width:24px;height:24px;border-radius:50%;border:2px solid #fff;cursor:pointer;padding:0;}
+#text-colors button.active{outline:2px solid orange;}

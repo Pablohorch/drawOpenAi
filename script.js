@@ -17,6 +17,22 @@ let undoStack = [];
 let redoStack = [];
 let editingText = null;
 let textarea = null;
+const colorMenu = document.getElementById('text-colors');
+const colorButtons = Array.from(colorMenu.querySelectorAll('button'));
+let currentTextColor = '#000000';
+colorButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        currentTextColor = btn.dataset.color || '#000000';
+        colorButtons.forEach(b => b.classList.toggle('active', b === btn));
+        if (editingText) {
+            editingText.color = currentTextColor;
+            if (textarea)
+                textarea.style.color = currentTextColor;
+            draw();
+            scheduleSave();
+        }
+    });
+});
 function pushUndo() {
     undoStack.push(JSON.parse(JSON.stringify(state.objects)));
     if (undoStack.length > 50)
@@ -31,7 +47,12 @@ function resize() {
 function load() {
     const data = localStorage.getItem('draw-data');
     if (data) {
-        state.objects = JSON.parse(data);
+        state.objects = JSON.parse(data).map(o => {
+            if (o.type === 'text' && !o.color) {
+                o.color = '#000000';
+            }
+            return o;
+        });
     }
 }
 function save() {
@@ -47,6 +68,7 @@ function setTool(t) {
     state.selected = null;
     state.moveStart = undefined;
     canvas.style.cursor = t === 'select' ? 'default' : 'crosshair';
+    colorMenu.classList.toggle('show', t === 'text');
 }
 document.getElementById('tool-draw').onclick = () => setTool('draw');
 document.getElementById('tool-rect').onclick = () => setTool('rect');
@@ -90,7 +112,11 @@ function startTextEdit(obj) {
     textarea.className = 'text-edit';
     textarea.value = obj.text;
     textarea.style.position = 'fixed';
+    textarea.style.color = obj.color;
     document.body.appendChild(textarea);
+    currentTextColor = obj.color;
+    colorButtons.forEach(b => b.classList.toggle('active', b.dataset.color === obj.color));
+    colorMenu.classList.add('show');
     updateTextAreaPos();
     textarea.focus();
     textarea.addEventListener('blur', finishTextEdit);
@@ -108,6 +134,8 @@ function finishTextEdit() {
     document.body.removeChild(textarea);
     textarea = null;
     editingText = null;
+    if (state.tool !== 'text')
+        colorMenu.classList.remove('show');
     scheduleSave();
     draw();
 }
@@ -126,6 +154,7 @@ function updateTextAreaPos() {
     textarea.style.height = `${h}px`;
     textarea.style.fontSize = `${h}px`;
     textarea.style.lineHeight = `${h}px`;
+    textarea.style.color = editingText.color;
 }
 canvas.addEventListener('pointerdown', e => {
     canvas.setPointerCapture(e.pointerId);
@@ -172,7 +201,7 @@ canvas.addEventListener('pointerdown', e => {
     else if (state.tool === 'line')
         state.current = { type: 'line', x1: p.x, y1: p.y, x2: p.x, y2: p.y };
     else if (state.tool === 'text')
-        state.current = { type: 'text', x: p.x, y: p.y, w: 0, h: 0, text: '', align: 'left' };
+        state.current = { type: 'text', x: p.x, y: p.y, w: 0, h: 0, text: '', align: 'left', color: currentTextColor };
 });
 canvas.addEventListener('pointermove', e => {
     if (state.isPanning && state.startPan) {
@@ -307,7 +336,8 @@ function drawObj(o) {
         const right = Math.max(o.x, o.x + o.w);
         const top = Math.min(o.y, o.y + o.h);
         ctx.textBaseline = 'top';
-        ctx.fillStyle = '#000';
+        ctx.fillStyle = o.color;
+
         let x = left;
         if (o.align === 'center')
             x = (left + right) / 2;
