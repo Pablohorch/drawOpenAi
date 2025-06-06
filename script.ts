@@ -101,12 +101,16 @@ function populateSaveList(): void {
 function loadFromSave(id: string): void {
   const s = saves.find(v => v.id === id);
   if (!s) return;
+  finishTextEdit();
   state.objects = JSON.parse(JSON.stringify(s.data));
   currentSaveId = id;
   localStorage.setItem('current-save', id);
   if (saveTitle) saveTitle.value = s.title;
   undoStack = [];
   redoStack = [];
+  state.selected = null;
+  state.current = null;
+  state.handle = undefined;
   scheduleSave();
   draw();
 }
@@ -114,9 +118,13 @@ function loadFromSave(id: string): void {
 function createNewBoard(): void {
   currentSaveId = null;
   if (saveTitle) saveTitle.value = '';
+  finishTextEdit();
   state.objects = [];
   undoStack = [];
   redoStack = [];
+  state.selected = null;
+  state.current = null;
+  state.handle = undefined;
   localStorage.removeItem('current-save');
   scheduleSave();
   draw();
@@ -141,6 +149,9 @@ function saveCurrent(): void {
   saveSaves();
   populateSaveList();
   if (saveSelect) saveSelect.value = currentSaveId ?? '';
+  state.selected = null;
+  state.current = null;
+  state.handle = undefined;
 }
 
 function pushUndo(): void {
