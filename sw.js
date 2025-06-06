@@ -1,5 +1,5 @@
 // Bump cache version whenever static assets change
-const CACHE='static-v6';
+const CACHE='static-v7';
 const ASSETS=[
   './',
   'index.html',

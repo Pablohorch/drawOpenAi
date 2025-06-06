@@ -152,6 +152,8 @@ function saveCurrent(): void {
   state.selected = null;
   state.current = null;
   state.handle = undefined;
+  scheduleSave();
+  draw();
 }
 
 function pushUndo(): void {
