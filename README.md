@@ -19,3 +19,5 @@ Ejecuta `tsc` para generar `script.js` y abre `index.html` en un navegador moder
 ## Despliegue en GitHub Pages
 
 Tras fusionar a `main`, copia todos los archivos al branch `gh-pages` y publica desde la configuraci\u00f3n de GitHub Pages. Si modificas los archivos est\u00e1ticos recuerda incrementar la constante `CACHE` en `sw.js` para que los navegadores descarguen la nueva versi\u00f3n.
+
+Para verificar que la página desplegada corresponde a la última compilación, incrementa también el número de versión que aparece en el elemento `<title>` de `index.html`. Así, al cargar la web se puede comprobar fácilmente que se está viendo la versión correcta.
