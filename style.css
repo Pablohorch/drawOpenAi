@@ -1,5 +1,5 @@
 html,body{margin:0;height:100%;overflow:hidden;font-family:sans-serif;}
-#board{background:#fff;display:block;margin:auto;touch-action:none;}
+#board{background:#fff;display:block;width:100vw;height:100vh;margin:auto;touch-action:none;}
 #toolbar{position:fixed;bottom:20px;right:20px;background:rgba(255,255,255,.9);box-shadow:0 0 8px rgba(0,0,0,.2);display:flex;gap:10px;border-radius:30px;padding:8px;}
 #toolbar button{background:none;border:none;width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:24px;}
 #actions{position:fixed;top:10px;right:10px;background:rgba(255,255,255,.9);box-shadow:0 0 8px rgba(0,0,0,.2);display:flex;gap:6px;padding:5px;border-radius:4px;}
@@ -18,4 +18,8 @@ html,body{margin:0;height:100%;overflow:hidden;font-family:sans-serif;}
   #save-menu{top:auto;bottom:20px;left:50%;transform:translateX(-50%);flex-direction:column;padding:10px;gap:8px;}
   #save-menu select,#save-menu input{font-size:16px;width:200px;}
   #save-menu button{font-size:24px;}
+  #toolbar{bottom:20px;right:50%;transform:translateX(50%);flex-direction:row;gap:12px;padding:10px;}
+  #toolbar button{width:48px;height:48px;font-size:26px;}
+  #actions{top:auto;bottom:80px;left:10px;right:auto;}
+  #text-colors{bottom:140px;}
 }

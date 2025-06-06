@@ -2,9 +2,15 @@
 
 Aplicaci\u00f3n de pizarra infinita desarrollada en HTML, CSS y TypeScript.
 
+La interfaz se ha redise\u00f1ado para adaptarse tanto a ordenadores como a tel\u00e9fonos m\u00f3viles. Los men\u00fas y herramientas cambian de posici\u00f3n en pantallas peque\u00f1as para mantener la usabilidad.
+
 ## Uso local
 
 Ejecuta `tsc` para generar `script.js` y abre `index.html` en un navegador moderno. El dibujo se guarda autom\u00e1ticamente en `localStorage` y se restaura al recargar.
+
+## Dise\u00f1o adaptativo
+
+En equipos de escritorio la barra de herramientas se muestra en vertical y los controles de acci\u00f3n permanecen en la esquina superior. En dispositivos m\u00f3viles la barra pasa a disponerse horizontalmente en la parte inferior y los botones se agrandan para facilitar su manejo t\u00e1ctil.
 
 ### Controles
 
