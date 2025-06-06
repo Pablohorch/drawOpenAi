@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Whiteboard V2</title>
+<title>Whiteboard V3</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -32,7 +32,15 @@
 </div>
 <script src="script.js"></script>
 <script>
-if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js'); }
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+}
 </script>
 </body>
 </html>
