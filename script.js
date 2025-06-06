@@ -33,6 +33,82 @@ colorButtons.forEach(btn => {
         }
     });
 });
+let saves = [];
+let currentSaveId = null;
+const saveSelect = document.getElementById('drawing-list');
+const saveTitle = document.getElementById('drawing-title');
+const saveBtn = document.getElementById('save-drawing');
+function loadSaves() {
+    const raw = localStorage.getItem('draw-saves');
+    saves = raw ? JSON.parse(raw) : [];
+}
+function saveSaves() {
+    localStorage.setItem('draw-saves', JSON.stringify(saves));
+}
+function populateSaveList() {
+    if (!saveSelect)
+        return;
+    saveSelect.innerHTML = '';
+    const optNew = document.createElement('option');
+    optNew.value = '';
+    optNew.textContent = '(Nuevo dibujo)';
+    saveSelect.appendChild(optNew);
+    saves.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = s.title;
+        saveSelect.appendChild(opt);
+    });
+    saveSelect.value = currentSaveId !== null && currentSaveId !== void 0 ? currentSaveId : '';
+}
+function loadFromSave(id) {
+    const s = saves.find(v => v.id === id);
+    if (!s)
+        return;
+    state.objects = JSON.parse(JSON.stringify(s.data));
+    currentSaveId = id;
+    localStorage.setItem('current-save', id);
+    if (saveTitle)
+        saveTitle.value = s.title;
+    undoStack = [];
+    redoStack = [];
+    scheduleSave();
+    draw();
+}
+function createNewBoard() {
+    currentSaveId = null;
+    if (saveTitle)
+        saveTitle.value = '';
+    state.objects = [];
+    undoStack = [];
+    redoStack = [];
+    localStorage.removeItem('current-save');
+    scheduleSave();
+    draw();
+}
+function saveCurrent() {
+    const title = ((saveTitle === null || saveTitle === void 0 ? void 0 : saveTitle.value.trim()) || 'Dibujo sin titulo');
+    const data = JSON.parse(JSON.stringify(state.objects));
+    if (currentSaveId) {
+        const existing = saves.find(s => s.id === currentSaveId);
+        if (existing) {
+            existing.title = title;
+            existing.data = data;
+        }
+    }
+    else {
+        const id = Date.now().toString();
+        saves.push({ id, title, data });
+        currentSaveId = id;
+        localStorage.setItem('current-save', id);
+    }
+    if (saveTitle)
+        saveTitle.value = title;
+    saveSaves();
+    populateSaveList();
+    if (saveSelect)
+        saveSelect.value = currentSaveId !== null && currentSaveId !== void 0 ? currentSaveId : '';
+}
 function pushUndo() {
     undoStack.push(JSON.parse(JSON.stringify(state.objects)));
     if (undoStack.length > 50)
@@ -45,15 +121,34 @@ function resize() {
     draw();
 }
 function load() {
-    const data = localStorage.getItem('draw-data');
-    if (data) {
-        state.objects = JSON.parse(data).map(o => {
+    loadSaves();
+    currentSaveId = localStorage.getItem('current-save');
+    if (currentSaveId && saves.some(s => s.id === currentSaveId)) {
+        const s = saves.find(v => v.id === currentSaveId);
+        state.objects = s.data.map(o => {
             if (o.type === 'text' && !o.color) {
                 o.color = '#000000';
             }
             return o;
         });
+        if (saveTitle)
+            saveTitle.value = s.title;
     }
+    else {
+        currentSaveId = null;
+        const data = localStorage.getItem('draw-data');
+        if (data) {
+            state.objects = JSON.parse(data).map(o => {
+                if (o.type === 'text' && !o.color) {
+                    o.color = '#000000';
+                }
+                return o;
+            });
+        }
+    }
+    populateSaveList();
+    if (saveSelect)
+        saveSelect.value = currentSaveId !== null && currentSaveId !== void 0 ? currentSaveId : '';
 }
 function save() {
     localStorage.setItem('draw-data', JSON.stringify(state.objects));
@@ -78,6 +173,16 @@ document.getElementById('tool-select').onclick = () => setTool('select');
 document.getElementById('clear').onclick = clearBoard;
 document.getElementById('undo').onclick = undo;
 document.getElementById('redo').onclick = redo;
+if (saveBtn)
+    saveBtn.onclick = saveCurrent;
+if (saveSelect)
+    saveSelect.onchange = () => {
+        const val = saveSelect.value;
+        if (val === '')
+            createNewBoard();
+        else
+            loadFromSave(val);
+    };
 window.addEventListener('keydown', e => {
     if (e.code === 'Space')
         space = true;
@@ -145,7 +250,6 @@ function updateTextAreaPos() {
     const left = Math.min(editingText.x, editingText.x + editingText.w);
     const top = Math.min(editingText.y, editingText.y + editingText.h);
     const p = toScreen(left, top);
-
     textarea.style.left = `${p.x}px`;
     textarea.style.top = `${p.y}px`;
     const w = Math.abs(editingText.w * state.scale);
@@ -326,7 +430,6 @@ function drawObj(o) {
             const left = Math.min(o.x, o.x + o.w);
             const top = Math.min(o.y, o.y + o.h);
             ctx.strokeRect(left, top, Math.abs(o.w), Math.abs(o.h));
-
         }
         if (editingText === o)
             return;
@@ -337,7 +440,6 @@ function drawObj(o) {
         const top = Math.min(o.y, o.y + o.h);
         ctx.textBaseline = 'top';
         ctx.fillStyle = o.color;
-
         let x = left;
         if (o.align === 'center')
             x = (left + right) / 2;

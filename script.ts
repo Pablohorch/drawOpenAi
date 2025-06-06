@@ -65,6 +65,84 @@ colorButtons.forEach(btn => {
   });
 });
 
+interface SaveEntry { id: string; title: string; data: DrawObject[]; }
+let saves: SaveEntry[] = [];
+let currentSaveId: string | null = null;
+
+const saveSelect = document.getElementById('drawing-list') as HTMLSelectElement;
+const saveTitle = document.getElementById('drawing-title') as HTMLInputElement;
+const saveBtn = document.getElementById('save-drawing') as HTMLButtonElement;
+
+function loadSaves(): void {
+  const raw = localStorage.getItem('draw-saves');
+  saves = raw ? JSON.parse(raw) as SaveEntry[] : [];
+}
+
+function saveSaves(): void {
+  localStorage.setItem('draw-saves', JSON.stringify(saves));
+}
+
+function populateSaveList(): void {
+  if (!saveSelect) return;
+  saveSelect.innerHTML = '';
+  const optNew = document.createElement('option');
+  optNew.value = '';
+  optNew.textContent = '(Nuevo dibujo)';
+  saveSelect.appendChild(optNew);
+  saves.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.title;
+    saveSelect.appendChild(opt);
+  });
+  saveSelect.value = currentSaveId ?? '';
+}
+
+function loadFromSave(id: string): void {
+  const s = saves.find(v => v.id === id);
+  if (!s) return;
+  state.objects = JSON.parse(JSON.stringify(s.data));
+  currentSaveId = id;
+  localStorage.setItem('current-save', id);
+  if (saveTitle) saveTitle.value = s.title;
+  undoStack = [];
+  redoStack = [];
+  scheduleSave();
+  draw();
+}
+
+function createNewBoard(): void {
+  currentSaveId = null;
+  if (saveTitle) saveTitle.value = '';
+  state.objects = [];
+  undoStack = [];
+  redoStack = [];
+  localStorage.removeItem('current-save');
+  scheduleSave();
+  draw();
+}
+
+function saveCurrent(): void {
+  const title = (saveTitle?.value.trim() || 'Dibujo sin titulo');
+  const data = JSON.parse(JSON.stringify(state.objects));
+  if (currentSaveId) {
+    const existing = saves.find(s => s.id === currentSaveId);
+    if (existing) {
+      existing.title = title;
+      existing.data = data;
+    }
+  } else {
+    const id = Date.now().toString();
+    saves.push({ id, title, data });
+    currentSaveId = id;
+    localStorage.setItem('current-save', id);
+  }
+  if (saveTitle) saveTitle.value = title;
+  saveSaves();
+  populateSaveList();
+  if (saveSelect) saveSelect.value = currentSaveId ?? '';
+}
+
 function pushUndo(): void {
   undoStack.push(JSON.parse(JSON.stringify(state.objects)));
   if (undoStack.length > 50) undoStack.shift();
@@ -78,15 +156,31 @@ function resize(): void {
 }
 
 function load(): void {
-  const data = localStorage.getItem('draw-data');
-  if (data) {
-    state.objects = (JSON.parse(data) as DrawObject[]).map(o => {
+  loadSaves();
+  currentSaveId = localStorage.getItem('current-save');
+  if (currentSaveId && saves.some(s => s.id === currentSaveId)) {
+    const s = saves.find(v => v.id === currentSaveId)!;
+    state.objects = s.data.map(o => {
       if (o.type === 'text' && !(o as TextObj).color) {
         (o as TextObj).color = '#000000';
       }
       return o;
     });
+    if (saveTitle) saveTitle.value = s.title;
+  } else {
+    currentSaveId = null;
+    const data = localStorage.getItem('draw-data');
+    if (data) {
+      state.objects = (JSON.parse(data) as DrawObject[]).map(o => {
+        if (o.type === 'text' && !(o as TextObj).color) {
+          (o as TextObj).color = '#000000';
+        }
+        return o;
+      });
+    }
   }
+  populateSaveList();
+  if (saveSelect) saveSelect.value = currentSaveId ?? '';
 }
 
 function save(): void {
@@ -115,6 +209,12 @@ document.getElementById('tool-select')!.onclick = () => setTool('select');
 document.getElementById('clear')!.onclick = clearBoard;
 document.getElementById('undo')!.onclick = undo;
 document.getElementById('redo')!.onclick = redo;
+if (saveBtn) saveBtn.onclick = saveCurrent;
+if (saveSelect) saveSelect.onchange = () => {
+  const val = saveSelect.value;
+  if (val === '') createNewBoard();
+  else loadFromSave(val);
+};
 
 window.addEventListener('keydown', e => {
   if (e.code === 'Space') space = true;

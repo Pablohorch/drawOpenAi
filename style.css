@@ -10,3 +10,6 @@ html,body{margin:0;height:100%;overflow:hidden;font-family:sans-serif;}
 #text-colors.show{display:flex;}
 #text-colors button{width:24px;height:24px;border-radius:50%;border:2px solid #fff;cursor:pointer;padding:0;}
 #text-colors button.active{outline:2px solid orange;}
+#save-menu{position:fixed;top:10px;left:10px;background:rgba(255,255,255,.9);box-shadow:0 0 8px rgba(0,0,0,.2);display:flex;gap:6px;padding:5px;border-radius:4px;align-items:center;}
+#save-menu select,#save-menu input{font-size:14px;}
+#save-menu button{background:none;border:none;cursor:pointer;font-size:20px;}
