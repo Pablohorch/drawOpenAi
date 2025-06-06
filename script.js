@@ -65,6 +65,7 @@ function loadFromSave(id) {
     const s = saves.find(v => v.id === id);
     if (!s)
         return;
+    finishTextEdit();
     state.objects = JSON.parse(JSON.stringify(s.data));
     currentSaveId = id;
     localStorage.setItem('current-save', id);
@@ -72,6 +73,9 @@ function loadFromSave(id) {
         saveTitle.value = s.title;
     undoStack = [];
     redoStack = [];
+    state.selected = null;
+    state.current = null;
+    state.handle = undefined;
     scheduleSave();
     draw();
 }
@@ -79,9 +83,13 @@ function createNewBoard() {
     currentSaveId = null;
     if (saveTitle)
         saveTitle.value = '';
+    finishTextEdit();
     state.objects = [];
     undoStack = [];
     redoStack = [];
+    state.selected = null;
+    state.current = null;
+    state.handle = undefined;
     localStorage.removeItem('current-save');
     scheduleSave();
     draw();
@@ -108,6 +116,11 @@ function saveCurrent() {
     populateSaveList();
     if (saveSelect)
         saveSelect.value = currentSaveId !== null && currentSaveId !== void 0 ? currentSaveId : '';
+    state.selected = null;
+    state.current = null;
+    state.handle = undefined;
+    scheduleSave();
+    draw();
 }
 function pushUndo() {
     undoStack.push(JSON.parse(JSON.stringify(state.objects)));
